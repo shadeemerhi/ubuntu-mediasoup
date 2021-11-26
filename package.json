@@ -1,0 +1,35 @@
+{
+  "name": "ubuntu-mediasoup",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon app.js",
+    "watch": "watchify public/index.js -o public/bundle.js -v"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shadeemerhi/ubuntu-mediasoup.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/shadeemerhi/ubuntu-mediasoup/issues"
+  },
+  "homepage": "https://github.com/shadeemerhi/ubuntu-mediasoup#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "http": "0.0.1-security",
+    "httpolyglot": "^0.1.2",
+    "mediasoup": "^3.9.2",
+    "mediasoup-client": "^3.6.47",
+    "socket.io": "^4.4.0",
+    "socket.io-client": "^4.4.0",
+    "watchify": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
+  }
+}
