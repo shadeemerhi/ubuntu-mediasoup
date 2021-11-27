@@ -35,6 +35,10 @@ let router;
 let producerTransport;
 let consumerTransport;
 
+// Producers and consumers would typically be stored in a Map (mapped by id)
+let producer;
+let consumer;
+
 const createWorker = async () => {
     worker = await mediasoup.createWorker({
         rtcMinPort: 10000,
@@ -81,6 +85,7 @@ peers.on("connection", async (socket) => {
     });
 
     socket.on("createWebRtcTransport", async ({ sender }, callback) => {
+        console.log("IS THIS A SENDER REQUEST?", sender);
         if (sender) {
             producerTransport = await createWebRtcTransport(callback);
         } else {
@@ -88,27 +93,86 @@ peers.on("connection", async (socket) => {
         }
     });
 
-    socket.on('transport-connect', async ({ dtlsParameters }) => {
-      await producerTransport.connect({ dtlsParameters });
+    socket.on("transport-connect", async ({ dtlsParameters }) => {
+        await producerTransport.connect({ dtlsParameters });
     });
 
-    socket.on('transport-produce', async ({ kind, rtpParameters, appData }, callback) => {
-      const producer = await producerTransport.produce({
-        kind,
-        rtpParameters,
-        // appData
-      });
+    socket.on("transport-connect-recv", async ({ dtlsParameters }) => {
+        await consumerTransport.connect({ dtlsParameters });
+    });
 
-      producer.on('transportclose', () => {
-        console.log('transport for this producer was closed');
-        producer.close();
-      })
+    socket.on(
+        "transport-produce",
+        async ({ kind, rtpParameters, appData }, callback) => {
+            producer = await producerTransport.produce({
+                kind,
+                rtpParameters,
+                // appData
+            });
 
-      // Pass the producer id back to the client
-      callback({ id: producer.id });
+            producer.on("transportclose", () => {
+                console.log("transport for this producer was closed");
+                producer.close();
+            });
 
-      // This is where the mediasoup-demo would store this producer in the peer of producers
+            console.log("HERE IS PRODUCER ID", producer.id);
 
+            // Pass the producer id back to the client
+            callback({ id: producer.id });
+
+            // This is where the mediasoup-demo would store this producer in the peer of producers
+        }
+    );
+
+    socket.on("consume", async ({ rtpCapabilities }, callback) => {
+        try {
+            if (
+                router.canConsume({
+                    producerId: producer.id,
+                    rtpCapabilities,
+                })
+            ) {
+                consumer = await consumerTransport.consume({
+                    /**
+                     * This consumer would have to consumer a specific producer
+                     * Not yert sure how we would find the specific producer we
+                     * are consuming from
+                     */
+                    producerId: producer.id,
+                    rtpCapabilities,
+                    paused: true,
+                });
+
+                consumer.on('transportclose', () => {
+                  console.log('transport close from consumer');
+                });
+
+                consumer.on('producerclose', () => {
+                  console.log('producer of consumer closed');
+                });
+
+                const params = {
+                  id: consumer.id,
+                  producerId: producer.id,
+                  kind: consumer.kind,
+                  rtpParameters: consumer.rtpParameters
+                };
+
+                callback({ params });
+            }
+        } catch (error) {
+            console.log(error);
+            callback({
+                params: {
+                    error,
+                },
+            });
+        }
+    });
+
+    socket.on('consumer-resume', async () => {
+      console.log('RESUMING CONSUMER');
+      await consumer.resume();
     })
 
     socket.on("disconnect", () => {
@@ -121,37 +185,40 @@ peers.on("connection", async (socket) => {
 
 const createWebRtcTransport = async (callback) => {
     try {
-      const webRtcTransportOptions = {
-        listenIps: [
-          {
-            ip: '127.0.0.1',
-          }
-        ],
-        enableUdp: true,
-        enableTcp: true,
-        preferUdp: true
-      }
-      let transport = await router.createWebRtcTransport(webRtcTransportOptions);
-      console.log('transport id', transport.id);
-      transport.on('dtlsstatechange', dtlsState => {
-        if (dtlsState === 'closed') {
-          transport.close();
-        }
-      })
+        const webRtcTransportOptions = {
+            listenIps: [
+                {
+                    ip: '0.0.0.0', // replace by relevant IP address
+                    announcedIp: "127.0.0.1",
+                },
+            ],
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+        };
+        let transport = await router.createWebRtcTransport(
+            webRtcTransportOptions
+        );
+        console.log("transport id", transport.id);
+        transport.on("dtlsstatechange", (dtlsState) => {
+            if (dtlsState === "closed") {
+                transport.close();
+            }
+        });
 
-      transport.on('close', () => {
-        console.log('transport closed', transport.id);
-      });
+        transport.on("close", () => {
+            console.log("transport closed", transport.id);
+        });
 
-      callback({
-        params: {
-          id: transport.id,
-          iceParameters: transport.iceParameters,
-          iceCandidates: transport.iceCandidates,
-          dtlsParameters: transport.dtlsParameters
-        }
-      });
-      return transport;
+        callback({
+            params: {
+                id: transport.id,
+                iceParameters: transport.iceParameters,
+                iceCandidates: transport.iceCandidates,
+                dtlsParameters: transport.dtlsParameters,
+            },
+        });
+        return transport;
     } catch (error) {
         console.log(error);
         callback({
