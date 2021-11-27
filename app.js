@@ -88,6 +88,29 @@ peers.on("connection", async (socket) => {
         }
     });
 
+    socket.on('transport-connect', async ({ dtlsParameters }) => {
+      await producerTransport.connect({ dtlsParameters });
+    });
+
+    socket.on('transport-produce', async ({ kind, rtpParameters, appData }, callback) => {
+      const producer = await producerTransport.produce({
+        kind,
+        rtpParameters,
+        // appData
+      });
+
+      producer.on('transportclose', () => {
+        console.log('transport for this producer was closed');
+        producer.close();
+      })
+
+      // Pass the producer id back to the client
+      callback({ id: producer.id });
+
+      // This is where the mediasoup-demo would store this producer in the peer of producers
+
+    })
+
     socket.on("disconnect", () => {
         // do some cleanup
         console.log("peer disconnected");
@@ -127,7 +150,8 @@ const createWebRtcTransport = async (callback) => {
           iceCandidates: transport.iceCandidates,
           dtlsParameters: transport.dtlsParameters
         }
-      })
+      });
+      return transport;
     } catch (error) {
         console.log(error);
         callback({

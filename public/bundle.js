@@ -17429,9 +17429,30 @@ socket.on('connection-success', ({ socketId }) => {
 let device;
 let rtpCapabilities;
 let sendTransport;
+let videoProducer;
 
 let params = {
   // mediasoup params
+  encoding: [
+    {
+      rid: 'r0',
+      maxBitrate: 100000,
+      scalabilityMode: 'S1T3',
+    },
+    {
+      rid: 'r1',
+      maxBitrate: 300000,
+      scalabilityMode: 'S1T3',
+    },
+    {
+      rid: 'r2',
+      maxBitrate: 900000,
+      scalabilityMode: 'S1T3',
+    },
+  ],
+  codecOptions: {
+    videoGoogleStartBitrate: 1000
+  }
 }
 const streamSuccess = async (stream) => {
   localVideo.srcObject = stream;
@@ -17497,16 +17518,68 @@ const createSendTransport = async () => {
     console.log('TRANSPORT PARAMS', params);
     sendTransport = device.createSendTransport(params);
 
+    sendTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+      console.log('CONNECTING SEND TRANSPORT');
+      try {
+        await socket.emit('transport-connect', {
+          dtlsParameters: dtlsParameters
+        });
+        
+        // Tell the transport that parameters were transmitted
+        callback();
+      } catch (error) {
+        errback(error);
+      }
+    });
+    
+    sendTransport.on('produce', async (parameters, callback, errback) => {
+      console.log('SEND TRANSPORT PRODUCING');
+      try {
+        await socket.emit('transport-produce', {
+          kind: parameters.kind,
+          rtpParameters: parameters.rtpParameters,
+          appData: parameters.appData
+        }, ({ id })=> {
+          /**
+           * Tell the transport that parameters were transmitted and provide it
+           * with the server side producer's id
+           */
+          console.log('CALLBACK PRODUCER ID', id);
+          callback({ id });
+        })
+      } catch (error) {
+        errback(error);
+      }
+    })
+
     console.log('SEND TRANSPORT CREATED', sendTransport);
   })
 
+};
+
+const connectSendTransport = async () => {
+  videoProducer = await sendTransport.produce(params);
+
+  videoProducer.on('trackended', () => {
+    console.log('track ended');
+
+    // close video track
+  });
+
+  // If the user disables their webcam, a function should be called that calls videoProducer.close()
+  videoProducer.on('transportclose', () => {
+    console.log('transport ended');
+    videoProducer = null;
+  });
+  
+  console.log('INSIDE CONNECT SEND TRANSPORT', videoProducer.id);
 }
 
 btnLocalVideo.addEventListener('click', getLocalStream)
 btnRtpCapabilities.addEventListener('click', getRtpCapabilities)
 btnDevice.addEventListener('click', createDevice)
 btnCreateSendTransport.addEventListener('click', createSendTransport)
-// btnConnectSendTransport.addEventListener('click', connectSendTransport)
+btnConnectSendTransport.addEventListener('click', connectSendTransport)
 // btnRecvSendTransport.addEventListener('click', createRecvTransport)
 // btnConnectRecvTransport.addEventListener('click', connectRecvTransport)
 },{"mediasoup-client":60,"socket.io-client":75}]},{},[87]);
