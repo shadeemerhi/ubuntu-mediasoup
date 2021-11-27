@@ -1,7 +1,7 @@
 const io = require("socket.io-client");
 const mediasoupClient = require("mediasoup-client");
 
-const roomName = window.location.pathname.split('/')[2];
+const roomName = window.location.pathname.split("/")[2];
 
 const socket = io("/mediasoup");
 
@@ -53,15 +53,15 @@ const streamSuccess = (stream) => {
 };
 
 const joinRoom = () => {
-  socket.emit('joinRoom', { roomName }, (data) => {
-    console.log('ROUTER RTP CAPABILITIES', data.rtpCapabilities);
-    rtpCapabilities = data.rtpCapabilities;
+    socket.emit("joinRoom", { roomName }, (data) => {
+        console.log("ROUTER RTP CAPABILITIES", data.rtpCapabilities);
+        rtpCapabilities = data.rtpCapabilities;
 
-    // NOTE - Could create device directly in here, then add condition to check if producer or consumer
+        // NOTE - Could create device directly in here, then add condition to check if producer or consumer
 
-    createDevice();
-  })
-}
+        createDevice();
+    });
+};
 
 const getLocalStream = () => {
     navigator.mediaDevices
@@ -83,17 +83,17 @@ const getLocalStream = () => {
 };
 
 const goConsume = () => {
-  goConnect(false);
-}
+    goConnect(false);
+};
 
 const goConnect = (producerOrConsumer) => {
-  isProducer = producerOrConsumer;
-  device === undefined ? getRtpCapabilities() : goCreateTransport();
+    isProducer = producerOrConsumer;
+    device === undefined ? getRtpCapabilities() : goCreateTransport();
 };
 
 const goCreateTransport = () => {
-  isProducer ? createSendTransport() : createRecvTransport();
-}
+    isProducer ? createSendTransport() : createRecvTransport();
+};
 
 const createDevice = async () => {
     try {
@@ -108,11 +108,11 @@ const createDevice = async () => {
 
         // Once the device loads, create transport
         // goCreateTransport(); // creates transport based on if consumer or producer (will use!!)
-        
+
         // Video tutorial assumes everyone joining is a producer
         createSendTransport();
         /**
-         * Could add a condition inside of joinRoom to check if producer or consumer and create 
+         * Could add a condition inside of joinRoom to check if producer or consumer and create
          * corresponding transports (like in mediasoup-demo source code)
          */
     } catch (error) {
@@ -138,10 +138,11 @@ const getRtpCapabilities = () => {
 };
 
 const getProducers = () => {
-  socket.emit('getProducers', producerIds => {
-    producerIds.forEach(signalNewConsumerTransport);
-  })
-}
+    socket.emit("getProducers", (producerIds) => {
+        // For each producer in the room, create a new consumer
+        producerIds.forEach(id => signalNewConsumerTransport(id));
+    });
+};
 
 const createSendTransport = async () => {
     console.log("createWebRtcTransport()");
@@ -222,38 +223,41 @@ const connectSendTransport = async () => {
     console.log("VIDEO PRODUCER ID", videoProducer.id);
 };
 
-const createRecvTransport = async () => {
-    await socket.emit("createWebRtcTransport", { sender: false }, ({ params }) => {
-        if (params.error) {
-            console.log(error);
-            return;
-        }
-        console.log("RECEIVE TRANSPORT PARAMS", params);
-        recvTransport = device.createRecvTransport(params);
-
-        recvTransport.on(
-            "connect",
-            async ({ dtlsParameters }, callback, errback) => {
-                try {
-                    console.log("CONNECTING RECEIVE TRANSPORT");
-                    // Signal the DTLS parameters to the server side transport
-                    // Could have a single transport-connect event if server stored transports in an array by ID
-                    // In this case we don't store them that way on the server so we use two separate events
-                    await socket.emit("transport-connect-recv", {
-                        transportId: recvTransport.id, // Used to find transport on server inside of array/Map (not doing that in this example, but that's how it would be done)
-                        dtlsParameters,
-                    });
-
-                    // Tell the transport that parameters were transmitted
-                    callback();
-                } catch (error) {
-                    errback(error);
-                }
+const signalNewConsumerTransport = async (removeProducerId) => {
+    await socket.emit(
+        "createWebRtcTransport",
+        { consumer: true },
+        ({ params }) => {
+            if (params.error) {
+                console.log(error);
+                return;
             }
-            );
-        connectRecvTransport();
-    });
+            console.log("RECEIVE TRANSPORT PARAMS", params);
+            recvTransport = device.createRecvTransport(params);
 
+            recvTransport.on(
+                "connect",
+                async ({ dtlsParameters }, callback, errback) => {
+                    try {
+                        console.log("CONNECTING RECEIVE TRANSPORT");
+                        // Signal the DTLS parameters to the server side transport
+                        // Could have a single transport-connect event if server stored transports in an array by ID
+                        // In this case we don't store them that way on the server so we use two separate events
+                        await socket.emit("transport-connect-recv", {
+                            transportId: recvTransport.id, // Used to find transport on server inside of array/Map (not doing that in this example, but that's how it would be done)
+                            dtlsParameters,
+                        });
+
+                        // Tell the transport that parameters were transmitted
+                        callback();
+                    } catch (error) {
+                        errback(error);
+                    }
+                }
+            );
+            connectRecvTransport();
+        }
+    );
 };
 
 const connectRecvTransport = async () => {
