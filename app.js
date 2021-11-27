@@ -1,7 +1,7 @@
 import express from "express";
 const app = express();
 import http from "http";
-import mediasoup from "mediasoup";
+import mediasoup, { getSupportedRtpCapabilities } from "mediasoup";
 
 import https from "httpolyglot";
 import fs from "fs";
@@ -76,7 +76,21 @@ peers.on("connection", async (socket) => {
     console.log(socket.id);
     socket.emit("connection-success", {
         socketId: socket.id,
+        existsProducer: producer ? true : false,
     });
+
+    socket.on("createRoom", async (callback) => {
+        if (router === undefined) {
+            router = await worker.createRouter({ mediaCodecs });
+        }
+
+        getRtpCapabilities(callback);
+    });
+
+    const getRtpCapabilities = (callback) => {
+      const rtpCapabilities = router.rtpCapabilities
+      callback({ rtpCapabilities });
+    }
 
     socket.on("getRtpCapabilities", (callback) => {
         const rtpCapabilities = router.rtpCapabilities;
@@ -143,19 +157,19 @@ peers.on("connection", async (socket) => {
                     paused: true,
                 });
 
-                consumer.on('transportclose', () => {
-                  console.log('transport close from consumer');
+                consumer.on("transportclose", () => {
+                    console.log("transport close from consumer");
                 });
 
-                consumer.on('producerclose', () => {
-                  console.log('producer of consumer closed');
+                consumer.on("producerclose", () => {
+                    console.log("producer of consumer closed");
                 });
 
                 const params = {
-                  id: consumer.id,
-                  producerId: producer.id,
-                  kind: consumer.kind,
-                  rtpParameters: consumer.rtpParameters
+                    id: consumer.id,
+                    producerId: producer.id,
+                    kind: consumer.kind,
+                    rtpParameters: consumer.rtpParameters,
                 };
 
                 callback({ params });
@@ -170,17 +184,15 @@ peers.on("connection", async (socket) => {
         }
     });
 
-    socket.on('consumer-resume', async () => {
-      console.log('RESUMING CONSUMER');
-      await consumer.resume();
-    })
+    socket.on("consumer-resume", async () => {
+        console.log("RESUMING CONSUMER");
+        await consumer.resume();
+    });
 
     socket.on("disconnect", () => {
         // do some cleanup
         console.log("peer disconnected");
     });
-
-    router = await worker.createRouter({ mediaCodecs });
 });
 
 const createWebRtcTransport = async (callback) => {
@@ -188,7 +200,7 @@ const createWebRtcTransport = async (callback) => {
         const webRtcTransportOptions = {
             listenIps: [
                 {
-                    ip: '0.0.0.0', // replace by relevant IP address
+                    ip: "0.0.0.0", // replace by relevant IP address
                     announcedIp: "127.0.0.1",
                 },
             ],
