@@ -17428,6 +17428,7 @@ socket.on('connection-success', ({ socketId }) => {
 
 let device;
 let rtpCapabilities;
+let sendTransport;
 
 let params = {
   // mediasoup params
@@ -17484,12 +17485,27 @@ const getRtpCapabilities = () => {
     console.log("RTP CAPABILITIES SUCCESS", rtpCapabilities);
     await createDevice();
   })
+};
+
+const createSendTransport = async () => {
+  console.log('createWebRtcTransport()');
+  socket.emit('createWebRtcTransport', { sender: true },  ({ params }) => {
+    if (params.error) {
+      console.log(params.error);
+      return;
+    }
+    console.log('TRANSPORT PARAMS', params);
+    sendTransport = device.createSendTransport(params);
+
+    console.log('SEND TRANSPORT CREATED', sendTransport);
+  })
+
 }
 
 btnLocalVideo.addEventListener('click', getLocalStream)
 btnRtpCapabilities.addEventListener('click', getRtpCapabilities)
 btnDevice.addEventListener('click', createDevice)
-// btnCreateSendTransport.addEventListener('click', createSendTransport)
+btnCreateSendTransport.addEventListener('click', createSendTransport)
 // btnConnectSendTransport.addEventListener('click', connectSendTransport)
 // btnRecvSendTransport.addEventListener('click', createRecvTransport)
 // btnConnectRecvTransport.addEventListener('click', connectRecvTransport)
