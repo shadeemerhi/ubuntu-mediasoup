@@ -17432,7 +17432,8 @@ socket.on("connection-success", ({ socketId, existsProducer }) => {
 let device;
 let rtpCapabilities;
 let sendTransport;
-let recvTransport = [];
+let recvTransport;
+let recvTransports = [];
 let videoProducer;
 let videoConsumer;
 let isProducer = false;
@@ -17556,6 +17557,8 @@ const getRtpCapabilities = () => {
     });
 };
 
+socket.on('new-producer', ({ producerId }) => signalNewConsumerTransport(producerId));
+
 const getProducers = () => {
     socket.emit("getProducers", (producerIds) => {
         // For each producer in the room, create a new consumer
@@ -17642,7 +17645,7 @@ const connectSendTransport = async () => {
     console.log("VIDEO PRODUCER ID", videoProducer.id);
 };
 
-const signalNewConsumerTransport = async (removeProducerId) => {
+const signalNewConsumerTransport = async (remoteProducerId) => {
     await socket.emit(
         "createWebRtcTransport",
         { consumer: true },
@@ -17674,16 +17677,19 @@ const signalNewConsumerTransport = async (removeProducerId) => {
                     }
                 }
             );
-            connectRecvTransport();
+            // params.id is the server-side consumer transport's id
+            connectRecvTransport(recvTransport, remoteProducerId, params.id);
         }
     );
 };
 
-const connectRecvTransport = async () => {
+const connectRecvTransport = async (recvTransport, remoteProducerId, serverConsumerTransportId) => {
     await socket.emit(
         "consume",
         {
             rtpCapabilities: device.rtpCapabilities,
+            remoteProducerId,
+            serverConsumerTransportId
         },
         async ({ params }) => {
             if (params.error) {
@@ -17692,22 +17698,51 @@ const connectRecvTransport = async () => {
             }
             console.log("CONSUMER PARAMS");
             // Will store these consumers in state
-            videoConsumer = await recvTransport.consume({
+            const consumer = await recvTransport.consume({
                 id: params.id,
                 producerId: params.producerId,
                 kind: params.kind,
                 rtpParameters: params.rtpParameters,
             });
 
-            const { track } = videoConsumer;
-            remoteVideo.srcObject = new MediaStream([track]);
+            recvTransports = [
+              ...recvTransports,
+              {
+                recvTransport,
+                serverConsumerTransportId: params.id,
+                producerId: remoteProducerId,
+                consumer
+              }
+            ];
 
-            socket.emit("consumer-resume");
+            const newElem = document.createElement('div');
+            newElem.setAttribute('id', `td-${remoteProducerId}`);
+            newElem.setAttribute('class', 'remoteVideo');
+            newElem.innerHTML = '<video id="' + remoteProducerId + '"autoplay class="video" ></video';
+            videoContainer.appendChild(newElem);
+
+            const { track } = videoConsumer;
+            // remoteVideo.srcObject = new MediaStream([track]);
+            document.getElementById(remoteProducerId).srcObject = new MediaStream([track]);
+
+            // socket.emit("consumer-resume");
+            socket.emit('consumer-resume', { serverConsumerId: params.serverConsumerId });
         }
     );
 };
 
-// btnLocalVideo.addEventListener("click", getLocalStream);
-// btnRecvSendTransport.addEventListener("click", goConsume);
+socket.on('producer-closed', ({ remoteProducerId }) => {
+  // server notification is received when a producer is closed
+  // we need to close the client-side consumer and associated transport
+  const producerToClose = consumerTransports.find(transportData => transportData.producerId === remoteProducerId);
+  producerToClose.consumerTransport.close();
+  producerToClose.consumer.close();
 
+  // Remove the consumer transport from the list
+  consumerTransports = consumerTransports.filter(transportData => transportData.producerId !== remoteProducerId);
+
+  // Remove the video div element
+  videoContainer.removeChild(document.getElementById(`td-${remoteProducerId}`));
+
+})
 },{"mediasoup-client":60,"socket.io-client":75}]},{},[87]);
